@@ -56,6 +56,7 @@ from .logits_process import (
     TopKLogitsWarper,
     TopPLogitsWarper,
     TypicalLogitsWarper,
+    KeepTokensLogitsProcessor,
 )
 from .stopping_criteria import (
     MaxLengthCriteria,
@@ -1043,6 +1044,7 @@ class GenerationMixin:
         begin_suppress_tokens: Optional[List[int]] = None,
         forced_decoder_ids: Optional[List[List[int]]] = None,
         ssj: Optional[bool] = False,
+        similarity: Optional[float] = None,
         **model_kwargs,
     ) -> Union[GenerateOutput, torch.LongTensor]:
         r"""
@@ -1781,7 +1783,14 @@ class GenerationMixin:
                     length_penalty=length_penalty,
                     do_early_stopping=early_stopping,
                     num_beam_hyps_to_keep=num_return_sequences,
+                    similarity=similarity,
                 )
+
+                # add a logits processer which takes into account the similarity condition
+                keep_tokens = [c.token_ids[0] for c in final_constraints] + [eos_token_id]
+                # limit next generation to consider only the tokens from the constraints + eos token
+                logits_processor.append(KeepTokensLogitsProcessor(keep_tokens, similarity))
+                
                 return self.ssj_beam_search(
                     input_ids,
                     ssj_beam_scorer=ssj_beam_scorer,

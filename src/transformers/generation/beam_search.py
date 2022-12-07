@@ -892,6 +892,7 @@ class SSJBeamSearchScorer(BeamScorer):
         do_early_stopping: Optional[bool] = False,
         num_beam_hyps_to_keep: Optional[int] = 1,
         num_beam_groups: Optional[int] = 1,
+        similarity: Optional[float] = None,
         **kwargs,
     ):
         self.num_beams = num_beams
@@ -1035,37 +1036,34 @@ class SSJBeamSearchScorer(BeamScorer):
             ):
                 batch_beam_idx = batch_idx * self.group_size + next_index
                 threshold = 0.8
-                condition = (1 + threshold) / threshold
-                # num_completed_constraints = intersection
-                # no need for minus 1 because the first token is never part of the constraints
-                intersection = self.num_complete_constraints(input_ids[batch_beam_idx].cpu().tolist()+[next_token.item()])
-                # no need for +1 in the cur_len because it counts the start token as well
-                union = len(self.constraints) - intersection + cur_len
-                if (intersection / union >= threshold):
-                    beam_hyp.add(
-                        torch.cat([input_ids[batch_beam_idx, :], next_token.unsqueeze(-1), eos_token_id], dim=-1),
-                        1e9, # perfect score because this is a match by construction
-                    )
-                    print("Here1")
-                # in case we need only to add from the constraints
-                elif len(self.constraints) + cur_len < (condition*intersection): 
-                    # TODO: force progress only with given constraints
-                    # Maybe by artificially modifying the output to be zero for all non constraints?
-                    print("Here2")
-                # # add to generated hypotheses if end of sentence
-                # if (eos_token_id is not None) and (next_token.item() == eos_token_id):
+                min_length = threshold*len(self.constraints)
+                # if the current hypthesis is bigger than the minimum number of tokens needed for similiarty check
+                # if it is similar (no need for +1 since cur_len counts also the start token)
+                if (cur_len - 1 >= min_length):
+                    # num_completed_constraints = intersection
+                    # no need for minus 1 because the first token is never part of the constraints
+                    intersection = self.num_complete_constraints(input_ids[batch_beam_idx].cpu().tolist()+[next_token.item()])
+                    # no need for +1 in the cur_len because it counts the start token as well
+                    union = len(self.constraints) - intersection + cur_len
+                    if intersection / union >= threshold:
+                        beam_hyp.add(
+                            torch.cat([input_ids[batch_beam_idx, :], next_token.unsqueeze(-1)], dim=-1),
+                            # # # artificially add the eos_token
+                            # torch.cat([input_ids[batch_beam_idx, :], next_token.unsqueeze(-1), torch.tensor([eos_token_id])], dim=-1),
+                            1e9, # perfect score because this is a match by construction
+                        )
+                # # add to generated hypotheses if end of sentence and similar
+                if (eos_token_id is not None) and (next_token.item() == eos_token_id):
+                    # no need to include the next token as it is eos_token
+                    intersection = self.num_complete_constraints(input_ids[batch_beam_idx].cpu().tolist())
+                    # no need for +1 in the cur_len because it counts the start token as well
+                    union = len(self.constraints) - intersection + cur_len
 
-                #     # if beam_token does not belong to top num_beams tokens, it should not be added
-                #     is_beam_token_worse_than_top_num_beams = beam_token_rank >= self.group_size
-                #     if is_beam_token_worse_than_top_num_beams:
-                #         continue
-
-                #     completes_constraint = self.check_completes_constraints(input_ids[batch_beam_idx].cpu().tolist())
-                #     if completes_constraint:
-                #         beam_hyp.add(
-                #             input_ids[batch_beam_idx].clone(),
-                #             next_score.item(),
-                #         )
+                    if intersection / union >= threshold:
+                        beam_hyp.add(
+                            input_ids[batch_beam_idx].clone(),
+                            next_score.item(),
+                        )
                 else:
                     # add next predicted token since it is not eos_token
                     next_beam_scores[batch_idx, beam_idx] = next_score
