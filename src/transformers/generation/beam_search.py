@@ -1040,8 +1040,8 @@ class SSJBeamSearchScorer(BeamScorer):
                 batch_beam_idx = batch_idx * self.group_size + next_index
                 min_length = self.similarity_threshold*len(self.constraints)
                 # if the current hypthesis is bigger than the minimum number of tokens needed for similiarty check
-                # if it is similar (no need for +1 since cur_len counts also the start token)
-                if (cur_len - 1 >= min_length):
+                # if it is similar (no need for -1 since the next_token is not counted yet while there is a start token)
+                if (cur_len >= min_length):
                     # num_completed_constraints = intersection
                     # no need for minus 1 because the first token is never part of the constraints
                     intersection = self.num_complete_constraints(input_ids[batch_beam_idx].cpu().tolist()+[next_token.item()])
