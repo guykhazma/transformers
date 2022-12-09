@@ -733,7 +733,7 @@ class SuppressTokensLogitsProcessor(LogitsProcessor):
         scores[:, self.suppress_tokens] = -float("inf")
         return scores
 
-class KeepTokensLogitsProcessor(LogitsProcessor):
+class SSJLogitsProcessor(LogitsProcessor):
     r"""
     [`LogitsProcessor`] keep only the tokens in the list
 
@@ -742,32 +742,32 @@ class KeepTokensLogitsProcessor(LogitsProcessor):
             The tokens to keep
     """
 
-    def __init__(self, keep_tokens, similarity):
-        self.keep_tokens = set(keep_tokens)
-        self.num_tokens = len(keep_tokens) - 1
+    def __init__(self, constraints, similarity):
+        self.constraints = set(constraints)
+        self.num_tokens = len(constraints) - 1
         self.similarity = similarity
         self.max_length = (1 / similarity) * self.num_tokens
 
-    def __call__(self, input_ids, scores):
+    def __call__(self, input_ids, scores):        
         num_tokens = scores.shape[1] 
-        tokens_to_reset = [i for i in range(num_tokens) if i not in self.keep_tokens]
-        # will keep track of input ids which can only consider element from the similar set
-        input_ids_to_reset = [] 
+        tokens_to_reset = [i for i in range(num_tokens) if i not in self.constraints]
         for i in range(input_ids.shape[0]):
             curr_tokens = input_ids[i].tolist()
             # find out whether we can allow ourselves to add at least one more tokens which is not in the intersection
             # if not we limit the next token to be only from the intersection
-            intersection = len(list(set(curr_tokens) & set(self.keep_tokens)))
+            intersection = set(curr_tokens).intersection(self.constraints)
             # max tokens left to add (+1 because the bos token is not counted)
             max_token_to_add = math.floor(self.max_length - len(curr_tokens) + 1)
             # edge case adding one token not to the intersection and the rest yes
             # -1 in current tokens as this is including the bos token
             # -1 in keep_tokens since it include eos token
-            min_similarity = (intersection + max_token_to_add - 1) / ((len(self.keep_tokens) - 1) + (len(curr_tokens) - 1) - intersection + 1)
+            min_similarity = (len(intersection) + max_token_to_add - 1) / ((len(self.constraints) - 1) + (len(curr_tokens) - 1) - len(intersection) + 1)
             # we reset only for rows which has to have only ids from the constraints
             if min_similarity < self.similarity:
                 scores[i, tokens_to_reset] = -float("inf")
-                input_ids_to_reset += [i]
+                # reset also tokens which were already included
+                if len(intersection) > 0:
+                    scores[i, list(intersection)] = -float("inf")
         return scores
 
 

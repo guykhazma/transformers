@@ -892,7 +892,8 @@ class SSJBeamSearchScorer(BeamScorer):
         do_early_stopping: Optional[bool] = False,
         num_beam_hyps_to_keep: Optional[int] = 1,
         num_beam_groups: Optional[int] = 1,
-        similarity: Optional[float] = None,
+        similarity_threshold: Optional[float] = None,
+        score_mode: Optional[bool] = True,
         **kwargs,
     ):
         self.num_beams = num_beams
@@ -903,6 +904,8 @@ class SSJBeamSearchScorer(BeamScorer):
         self.num_beam_groups = num_beam_groups
         self.group_size = self.num_beams // self.num_beam_groups
         self.constraints = constraints
+        self.similarity_threshold = similarity_threshold
+        self.score_mode = score_mode
 
         self._is_init = False
         self._beam_hyps = [
@@ -1035,8 +1038,7 @@ class SSJBeamSearchScorer(BeamScorer):
                 zip(next_tokens[batch_idx], next_scores[batch_idx], next_indices[batch_idx])
             ):
                 batch_beam_idx = batch_idx * self.group_size + next_index
-                threshold = 0.8
-                min_length = threshold*len(self.constraints)
+                min_length = self.similarity_threshold*len(self.constraints)
                 # if the current hypthesis is bigger than the minimum number of tokens needed for similiarty check
                 # if it is similar (no need for +1 since cur_len counts also the start token)
                 if (cur_len - 1 >= min_length):
@@ -1045,13 +1047,18 @@ class SSJBeamSearchScorer(BeamScorer):
                     intersection = self.num_complete_constraints(input_ids[batch_beam_idx].cpu().tolist()+[next_token.item()])
                     # no need for +1 in the cur_len because it counts the start token as well
                     union = len(self.constraints) - intersection + cur_len
-                    if intersection / union >= threshold:
+                    if intersection / union >= self.similarity_threshold:
                         beam_hyp.add(
                             torch.cat([input_ids[batch_beam_idx, :], next_token.unsqueeze(-1)], dim=-1),
-                            # # # artificially add the eos_token
-                            # torch.cat([input_ids[batch_beam_idx, :], next_token.unsqueeze(-1), torch.tensor([eos_token_id])], dim=-1),
-                            1e9, # perfect score because this is a match by construction
+                            # two modes either add with the score given by the model or with perfect score
+                            next_score.item() if self.score_mode else 1e9,
                         )
+                        # beam_hyp.add(
+                        #      # artificially add the eos_token
+                        #     torch.cat([input_ids[batch_beam_idx, :], next_token.unsqueeze(-1), torch.tensor([eos_token_id])], dim=-1),
+                        #     # two modes either add with the score given by the model or with perfect score
+                        #     next_score.item() if self.score_mode else 1e9,
+                        # )
                 # # add to generated hypotheses if end of sentence and similar
                 if (eos_token_id is not None) and (next_token.item() == eos_token_id):
                     # no need to include the next token as it is eos_token
@@ -1059,7 +1066,7 @@ class SSJBeamSearchScorer(BeamScorer):
                     # no need for +1 in the cur_len because it counts the start token as well
                     union = len(self.constraints) - intersection + cur_len
 
-                    if intersection / union >= threshold:
+                    if intersection / union >= self.similarity_threshold:
                         beam_hyp.add(
                             input_ids[batch_beam_idx].clone(),
                             next_score.item(),
