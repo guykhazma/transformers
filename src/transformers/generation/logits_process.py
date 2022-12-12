@@ -765,9 +765,9 @@ class SSJLogitsProcessor(LogitsProcessor):
             # we reset only for rows which has to have only ids from the constraints
             if min_similarity < self.similarity:
                 scores[i, tokens_to_reset] = -float("inf")
-                # reset also tokens which were already included
-                if len(intersection) > 0:
-                    scores[i, list(intersection)] = -float("inf")
+            # reset also tokens which were already included
+            if len(intersection) > 0:
+                scores[i, list(intersection)] = -float("inf")
         return scores
 
 
