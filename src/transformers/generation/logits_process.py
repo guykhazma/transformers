@@ -758,12 +758,13 @@ class SSJLogitsProcessor(LogitsProcessor):
             intersection = set(curr_tokens).intersection(self.constraints)
             # max tokens left to add (+1 because the bos token is not counted)
             max_token_to_add = math.floor(self.max_length - len(curr_tokens) + 1)
-            # edge case adding one token not to the intersection and the rest yes
-            # -1 in current tokens as this is including the bos token
-            # -1 in keep_tokens since it include eos token
-            min_similarity = (len(intersection) + max_token_to_add - 1) / ((len(self.constraints) - 1) + (len(curr_tokens) - 1) - len(intersection) + 1)
+            # check if the maximum achievable similarity by adding a token which is not from the constraints
+            # is still above the threshold
+            # maximum is acheived by - extending intersection by adding all new tokens to the interesction but one
+            max_intersection_length = (len(intersection) + max_token_to_add - 1)
+            max_similarity = max_intersection_length / (self.num_tokens + self.max_length - max_intersection_length)
             # we reset only for rows which has to have only ids from the constraints
-            if min_similarity < self.similarity:
+            if max_similarity < self.similarity:
                 scores[i, tokens_to_reset] = -float("inf")
             # # reset also tokens which were already included
             scores[i, curr_tokens] = -float("inf")
