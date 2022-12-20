@@ -1789,9 +1789,9 @@ class GenerationMixin:
                 )
 
                 # add a logits processer which takes into account the similarity condition
-                constraints = [c.token_ids[0] for c in final_constraints] + [eos_token_id]
-                # limit next generation to consider only the tokens from the constraints + eos token
-                logits_processor.append(SSJLogitsProcessor(constraints, similarity))
+                set_constraints = [c.token_ids[0] for c in final_constraints]
+                # limit next generation to consider only the tokens from the constraints
+                logits_processor.append(SSJLogitsProcessor(set_constraints, similarity))
                 
                 return self.ssj_beam_search(
                     input_ids,
@@ -3881,7 +3881,7 @@ class GenerationMixin:
                 next_token_scores, 2 * num_beams, dim=1, largest=True, sorted=True
             )
 
-            next_indices = (next_tokens / vocab_size).long()
+            next_indices = torch.div(next_tokens, vocab_size, rounding_mode="floor").long() # (next_tokens / vocab_size).long()
             next_tokens = next_tokens % vocab_size
 
             # stateless

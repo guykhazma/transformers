@@ -744,7 +744,7 @@ class SSJLogitsProcessor(LogitsProcessor):
 
     def __init__(self, constraints, similarity):
         self.constraints = set(constraints)
-        self.num_tokens = len(constraints) - 1
+        self.num_tokens = len(constraints)
         self.similarity = similarity
         self.max_length = (1 / similarity) * self.num_tokens
 
